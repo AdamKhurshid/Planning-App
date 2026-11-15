@@ -1,0 +1,7 @@
+# Tempo backend dependencies.
+# Python 3.11+ recommended. For PostgreSQL, also install psycopg2-binary.
+Django>=5.2,<6.0
+djangorestframework>=3.16
+python-dateutil>=2.9
+
+# psycopg2-binary>=2.9  # uncomment when switching to PostgreSQL
