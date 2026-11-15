@@ -26,9 +26,9 @@ The app itself is managed as a project: phases → sections of ~1-hour tasks. Ea
 - ☑ Calendar/Projects/Settings placeholder screens wired to real endpoints
 - ☑ PWA: manifest, icons, service worker (app-shell cache), static web export verified
 
-## Phase 2 — Calendar ☐
-- ☐ Recurrence expansion service (RRULE → occurrences, overrides applied) + tests
-- ☐ Calendar API range endpoint returning merged entry layers (events, blocks)
+## Phase 2 — Calendar ◐
+- ☑ Recurrence expansion service (RRULE → occurrences, overrides applied, DST-safe) + tests + RRULE validation on create
+- ☑ Calendar API range endpoint returning merged entry layers (events, blocks) — `GET /api/calendar/`
 - ☐ Time-grid day/3-day/5-day/week/two-week view component (configurable day count)
 - ☐ Month view component with per-day density handling ("+N more")
 - ☐ Date navigation: today button, step forward/back, pick-a-date
@@ -47,13 +47,13 @@ The app itself is managed as a project: phases → sections of ~1-hour tasks. Ea
 - ☐ Task completion UX + dependency marking
 - ☐ Standalone tasks screen (no project) with unscheduled/completed filters
 
-## Phase 4 — Scheduling ☐
-- ☐ Availability computation from Profile (windows, caps, days off) + tests
-- ☐ `build_plan` algorithm (order, chunk, spread, place) + unit tests
-- ☐ Feasibility analysis + deficit reporting + tests
-- ☐ Preview screen (proposed blocks, per-day load, conflicts, achievable?)
-- ☐ Apply/undo endpoints with snapshot + history of plans
-- ☐ "Schedule Project" buttons wired into project summary
+## Phase 4 — Scheduling ◐
+- ☑ Availability computation from Profile (windows, caps, days off) + tests
+- ☑ `build_plan` algorithm (order, chunk, spread, place) + unit tests
+- ☑ Feasibility analysis + deficit reporting + tests
+- ☑ Preview screen (proposed blocks, per-day load, conflicts, achievable?)
+- ☑ Apply/undo endpoints with snapshot + history of plans
+- ◐ "Schedule Project" button on the project list (project summary dashboard arrives in Phase 3)
 - ☐ Conflict display when fixed commitments collide
 
 ## Phase 5 — Prayer Times & Holidays ☐
@@ -74,7 +74,7 @@ The app itself is managed as a project: phases → sections of ~1-hour tasks. Ea
 
 ## Phase 7 — Polish & Testing ☐
 - ☐ Full test suite green; scheduling + stats property tests
-- ☐ Security review (permissions, throttles, CORS, headers)
+- ◐ Security review (permissions, throttles, CORS, headers) — production settings now fail closed on weak secret keys and enable HSTS/secure cookies
 - ☐ Performance pass (query counts, memoization, list virtualization)
 - ☐ PWA install flow tested (desktop + Android)
 - ☐ Real-device smoke test notes (iOS/Android)

@@ -104,6 +104,39 @@ export interface Dashboard {
   };
 }
 
+export interface PlanBlock {
+  task_id: number;
+  title: string;
+  start: string;
+  end: string;
+  minutes: number;
+  date: string; // local calendar day (YYYY-MM-DD) in the profile timezone
+}
+
+export interface PlanConflict {
+  type: string;
+  task_id?: number;
+  message: string;
+}
+
+export interface SchedulePlan {
+  id: number;
+  project: number | null;
+  status: "preview" | "applied" | "undone" | "discarded";
+  is_feasible: boolean | null;
+  feasibility_note: string;
+  deficit_minutes_per_day: number | null;
+  payload: {
+    blocks: PlanBlock[];
+    unplaced: { task_id: number; title: string; minutes: number }[];
+    conflicts: PlanConflict[];
+    per_day: { date: string; capacity_minutes: number; planned_minutes: number; existing_minutes: number }[];
+    totals: { requested_minutes: number; planned_minutes: number; unplaced_minutes: number; days_available: number };
+  };
+  applied_at: string | null;
+  undone_at: string | null;
+}
+
 export const endpoints = {
   login: (password: string) =>
     api<{ token: string; user: UserInfo }>("/api/auth/login/", { method: "POST", body: { password } }),
@@ -128,6 +161,15 @@ export const endpoints = {
     api<TaskEntry>(`/api/tasks/${id}/complete/`, { method: "POST", body: { completed } }),
 
   listProjects: () => api<ProjectSummary[]>("/api/projects/"),
+
+  previewSchedule: (project: number, order: "manual" | "priority" = "manual") =>
+    api<SchedulePlan>("/api/scheduling/plans/preview/", { method: "POST", body: { project, order } }),
+  applySchedule: (planId: number) =>
+    api<SchedulePlan>(`/api/scheduling/plans/${planId}/apply/`, { method: "POST" }),
+  undoSchedule: (planId: number) =>
+    api<SchedulePlan>(`/api/scheduling/plans/${planId}/undo/`, { method: "POST" }),
+  discardSchedule: (planId: number) =>
+    api<SchedulePlan>(`/api/scheduling/plans/${planId}/discard/`, { method: "POST" }),
 
   updatePreferences: (patch: Partial<Profile>) =>
     api<Profile>("/api/preferences/", { method: "PATCH", body: patch }),

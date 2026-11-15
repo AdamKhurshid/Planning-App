@@ -258,3 +258,56 @@ class DashboardTodayView(APIView):
                 "remaining_minutes": scheduled_minutes,
             },
         })
+
+
+class CalendarRangeView(APIView):
+    """GET /api/calendar/?start=<iso>&end=<iso> -> merged layers for a range.
+
+    Recurring events are expanded into concrete occurrences (overrides
+    applied); time blocks are returned with their task info. The range is
+    capped at 62 days to keep responses small.
+    """
+
+    MAX_RANGE = timedelta(days=62)
+
+    def get(self, request):
+        from .recurrence import expand_events
+
+        start = parse_dt_param(request.query_params.get("start"), "start")
+        end = parse_dt_param(request.query_params.get("end"), "end")
+        if not start or not end:
+            raise ValidationError({"detail": "Both 'start' and 'end' are required."})
+        if end <= start:
+            raise ValidationError({"end": "end must be after start."})
+        if end - start > self.MAX_RANGE:
+            raise ValidationError({"end": "Range may not exceed 62 days."})
+
+        profile, _ = Profile.objects.get_or_create(user=request.user)
+        try:
+            tz = ZoneInfo(profile.timezone)
+        except Exception:
+            tz = ZoneInfo("UTC")
+
+        events = (Event.objects.filter(owner=request.user, start__lt=end)
+                  .filter(Q(end__gt=start) | ~Q(recurrence_rule=""))
+                  .prefetch_related("overrides"))
+        occurrences = expand_events(events, start, end, tz)
+        blocks = (TimeBlock.objects.filter(owner=request.user, start__lt=end, end__gt=start)
+                  .select_related("task", "task__project"))
+        return Response({
+            "range": {"start": start, "end": end},
+            "events": [{
+                "event_id": o["event"].id, "title": o["title"], "description": o["description"],
+                "location": o["location"], "color": o["color"], "category": o["category"],
+                "all_day": o["event"].all_day, "start": o["start"], "end": o["end"],
+                "original_date": o["original_date"], "is_recurring": bool(o["event"].recurrence_rule),
+            } for o in occurrences],
+            "blocks": [{
+                "block_id": b.id, "task_id": b.task_id, "title": b.task.title, "start": b.start,
+                "end": b.end, "source": b.source, "locked": b.locked,
+                "completed": b.task.completed_at is not None,
+                "project_id": b.task.project_id,
+                "project_title": b.task.project.title if b.task.project_id else "",
+                "color": b.task.color or (b.task.project.color if b.task.project_id else ""),
+            } for b in blocks],
+        })

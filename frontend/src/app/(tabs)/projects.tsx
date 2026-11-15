@@ -1,11 +1,12 @@
 /** Projects list (Phase 1: real data, real progress; summary dashboard and
  * editors arrive in Phase 3). */
 import { useCallback, useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 
 import { ApiError } from "@/api/client";
 import { endpoints, ProjectSummary } from "@/api/endpoints";
+import { SchedulePreview } from "@/components/SchedulePreview";
 import { Card, EmptyState, ProgressBar } from "@/components/ui";
 import { colors, spacing } from "@/theme";
 
@@ -13,6 +14,7 @@ export default function ProjectsScreen() {
   const [projects, setProjects] = useState<ProjectSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [scheduling, setScheduling] = useState<ProjectSummary | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -57,9 +59,22 @@ export default function ProjectsScreen() {
                   ? ` · due ${new Date(project.deadline).toLocaleDateString([], { day: "numeric", month: "short" })}`
                   : ""}
               </Text>
+              {project.tasks_total > project.tasks_completed ? (
+                <Pressable accessibilityRole="button" onPress={() => setScheduling(project)} style={styles.scheduleBtn}>
+                  <Text style={styles.scheduleText}>Schedule remaining work</Text>
+                </Pressable>
+              ) : null}
             </Card>
           ))
         : null}
+      <SchedulePreview
+        projectId={scheduling?.id ?? null}
+        projectTitle={scheduling?.title ?? ""}
+        onClose={(changed) => {
+          setScheduling(null);
+          if (changed) load();
+        }}
+      />
     </ScrollView>
   );
 }
@@ -72,4 +87,6 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontSize: 16, fontWeight: "700", color: colors.text },
   percent: { color: colors.muted, fontWeight: "700" },
   meta: { color: colors.muted, fontSize: 12 },
+  scheduleBtn: { marginTop: spacing.xs, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: `${colors.primary}14` },
+  scheduleText: { color: colors.primary, fontWeight: "700", fontSize: 13 },
 });

@@ -4,7 +4,7 @@ One private app for your time: calendar (events, tasks, prayer times, holidays),
 projects broken into sections and ~1-hour tasks, and an automatic scheduler that distributes
 remaining work across your availability before each project deadline.
 
-**Status: Phase 1 (Foundation) complete and verified.** See `docs/ARCHITECTURE.md` for the
+**Status: Phase 1 (Foundation) complete; the automatic scheduler (Phase 4 backend + preview UI) and recurrence expansion (Phase 2) are now in.** See `docs/ARCHITECTURE.md` for the
 design and `docs/DEV_PLAN.md` for the phase/task breakdown and progress.
 
 ```
@@ -40,8 +40,8 @@ python manage.py runserver              # http://localhost:8000
 
 - There is no username to remember (single private user, default `owner`); login is by
   password only. The plaintext password is never stored — only the hash you put in `.env`.
-- Run the test suite: `python manage.py test` (42 tests: auth wall, CRUD, validation,
-  progress math).
+- Run the test suite: `python manage.py test` (82 tests: auth wall, CRUD, validation,
+  progress math, recurrence expansion, scheduler algorithm + API).
 - Browsable admin: create a Django superuser with `python manage.py createsuperuser`
   (separate from the app password) and visit `/admin/`.
 
@@ -77,7 +77,7 @@ localStorage, so the app opens offline (data sync offline queueing is a Phase 6 
 |---|---|
 | **Today** | Everything for the current day: remaining scheduled work, schedule (events + work blocks), prayer times/holidays once configured, overdue tasks (one-tap complete), upcoming deadlines, active project progress |
 | **Calendar** | 7-day strip + day detail with events and work blocks (full day/week/month grids arrive in Phase 2) |
-| **Projects** | Active projects with live progress (percentages and hours are computed server-side from tasks) |
+| **Projects** | Active projects with live progress, plus **Schedule remaining work**: preview a plan (per-day load, conflicts, feasibility), apply it to the calendar, or undo it |
 | **Settings** | Availability + prayer/holiday configuration overview, sign out |
 
 Until the UI editors land (Phases 2–3), create data through the API — e.g.:
@@ -92,9 +92,31 @@ curl -X POST http://localhost:8000/api/projects/ -H "Authorization: Token $TOKEN
 The full Phase 1 endpoint list is in `docs/ARCHITECTURE.md` §5. All endpoints require the
 `Authorization: Token <key>` header.
 
+## Automatic scheduler
+
+`POST /api/scheduling/plans/preview/ {"project": <id>, "order": "manual|priority"}` computes a
+plan without touching the calendar; `…/plans/{id}/apply/` writes it, `…/undo/` reverts it
+exactly (soft-deleted blocks are restored), `…/discard/` drops a preview.
+
+How it plans (`backend/scheduling/algorithm.py`, a pure function with no DB access):
+
+1. **Availability** — working days/hours from your profile, minus events (recurring ones
+   expanded, DST-safe), manual/locked blocks and days off, capped by `max_work_minutes_per_day`.
+2. **Order** — your task order (or priority/deadline first); dependencies always win; cycles are
+   reported instead of crashing.
+3. **Even spread** — each day's target load is re-levelled from the work and capacity that
+   remain, so work is distributed across the whole runway rather than crammed up front.
+4. **Placement** — ~1h chunks with breaks, long tasks split, no tiny fragments; locked/manual
+   blocks and other projects' blocks are never moved or double-booked.
+5. **Feasibility** — if the work cannot fit, you get the unplaced minutes and the extra
+   minutes/day (or a later deadline) that would fix it. Task-level deadline misses are flagged.
+
+`GET /api/calendar/?start=&end=` returns events (recurrences expanded, overrides applied) and
+time blocks for a range (max 62 days).
+
 ## Production checklist
 
-- `TEMPO_DEBUG=0`, set `TEMPO_ALLOWED_HOSTS`, `TEMPO_CORS_ORIGINS`, and a strong
+- The app refuses to start with `TEMPO_DEBUG=0` and a weak/default secret key. Set `TEMPO_ALLOWED_HOSTS`, `TEMPO_CORS_ORIGINS`, and a strong
   `TEMPO_SECRET_KEY` in `backend/.env`.
 - Point `TEMPO_DB_ENGINE=postgres` (and credentials) — install `psycopg2-binary`.
 - Serve the PWA from `frontend/dist` behind HTTPS on the same domain or configure CORS.
@@ -103,9 +125,9 @@ The full Phase 1 endpoint list is in `docs/ARCHITECTURE.md` §5. All endpoints r
 ## Development status
 
 - ☑ **Phase 1 — Foundation** (this delivery): auth, models, API, tests, app shell, PWA
-- ☐ Phase 2 — Calendar views, entry editing, drag-and-drop
+- ◐ Phase 2 — Calendar: recurrence expansion + range endpoint done; views, editing, drag-and-drop to do
 - ☐ Phase 3 — Project dashboards, sections, task management
-- ☐ Phase 4 — Automatic scheduling with preview/apply/undo
+- ◐ Phase 4 — Automatic scheduling: algorithm, API and preview/apply/undo UI done; calendar conflict display to do
 - ☐ Phase 5 — Prayer times & holidays
 - ☐ Phase 6 — Notifications, recurrence UI, search, offline sync, export
 - ☐ Phase 7 — Polish, security review, performance, device testing

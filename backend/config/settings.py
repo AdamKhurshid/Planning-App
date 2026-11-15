@@ -47,6 +47,17 @@ else:
     if not ALLOWED_HOSTS:
         raise RuntimeError("TEMPO_ALLOWED_HOSTS must be set when TEMPO_DEBUG=0")
 
+if not DEBUG:
+    if SECRET_KEY.startswith("insecure-") or SECRET_KEY == "change-me" or len(SECRET_KEY) < 32:
+        raise RuntimeError("Set a strong TEMPO_SECRET_KEY (32+ chars) when TEMPO_DEBUG=0")
+    # Hardening for HTTPS deployments (behind a TLS-terminating proxy).
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_HSTS_SECONDS = int(env("TEMPO_HSTS_SECONDS", "31536000"))
+    SECURE_REFERRER_POLICY = "same-origin"
+
 # --- Private single user ----------------------------------------------------
 # The password lives ONLY as a Django-format hash (see manage.py hash_password).
 TEMPO_USERNAME = env("TEMPO_USERNAME", "owner")

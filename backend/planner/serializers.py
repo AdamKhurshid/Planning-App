@@ -2,6 +2,7 @@
 from rest_framework import serializers
 
 from .models import Event, RecurrenceOverride, Task, TimeBlock
+from .recurrence import validate_rrule
 
 
 class EventSerializer(serializers.ModelSerializer):
@@ -14,6 +15,13 @@ class EventSerializer(serializers.ModelSerializer):
             "location", "color", "category", "is_fixed", "recurrence_rule",
             "created_at", "updated_at",
         ]
+
+    def validate_recurrence_rule(self, value):
+        try:
+            validate_rrule(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
 
     def validate(self, attrs):
         start = attrs.get("start", getattr(self.instance, "start", None))
