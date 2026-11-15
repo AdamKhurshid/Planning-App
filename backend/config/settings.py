@@ -27,6 +27,7 @@ def _load_env(path: Path) -> None:
 
 _load_env(BASE_DIR / ".env")
 
+
 def env(key: str, default: str = "") -> str:
     return os.environ.get(key, default)
 
