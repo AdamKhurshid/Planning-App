@@ -16,8 +16,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         problems = []
-        #if settings.TEMPO_SECRET_KEY.startswith("insecure-dev-key"):
-            #problems.append("TEMPO_SECRET_KEY is still the insecure default — set a real one in .env.")
         if not settings.TEMPO_PASSWORD_HASH:
             problems.append("TEMPO_PASSWORD_HASH is not set — login will fail. Generate one with `python manage.py hash_password`.")
 
