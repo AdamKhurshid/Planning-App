@@ -68,7 +68,15 @@ class Task(OwnedSoftDeleteModel):
         "projects.Section", null=True, blank=True, on_delete=models.CASCADE, related_name="tasks"
     )
     position = models.PositiveIntegerField(default=0)
+    # RFC 5545 RRULE (without DTSTART). Recurring tasks materialise concrete
+    # TimeBlocks (source="recurring") from recurrence_rule + preferred_time;
+    # each block stays freely movable, editing the series regenerates the
+    # future ones. The scheduler never re-plans recurring tasks.
     recurrence_rule = models.CharField(max_length=200, blank=True, default="")
+    # Wall-clock start "HH:MM" (profile timezone) of each occurrence.
+    preferred_time = models.CharField(max_length=5, blank=True, default="")
+    # Day-task assignment: do this at some point on this day (no time block).
+    scheduled_date = models.DateField(null=True, blank=True)
     depends_on = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="dependents")
 
     class Meta:
@@ -105,6 +113,7 @@ class TimeBlock(OwnedSoftDeleteModel):
     class Source(models.TextChoices):
         MANUAL = "manual", "Manual"
         AUTO = "auto", "Scheduler"
+        RECURRING = "recurring", "Recurring series"
 
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="blocks")
     start = models.DateTimeField()
@@ -160,3 +169,56 @@ class RecurrenceOverride(OwnedSoftDeleteModel):
     def clean(self):
         if bool(self.event_id) == bool(self.task_id):
             raise ValidationError("Set exactly one of event or task.")
+
+
+class TaskOccurrenceDone(OwnedSoftDeleteModel):
+    """One done occurrence of a recurring task (e.g. today's Duolingo).
+
+    Keyed by local calendar date: the series itself never completes —
+    individual days do. Completing the whole Task still works (retire it).
+    """
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="occurrence_done")
+    date = models.DateField(db_index=True)
+
+    class Meta:
+        ordering = ["-date"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "task", "date"], name="unique_task_occurrence_done"),
+        ]
+
+    def __str__(self):
+        return f"{self.task.title} done on {self.date}"
+
+
+class Holiday(OwnedSoftDeleteModel):
+    """One holiday on the user's calendar.
+
+    Rows with source="nager" are materialised from the public holiday feed
+    (date.nager.at) for the configured country/region and act as the cache;
+    rows with source="manual" are added by the user and never overwritten.
+    Dates always come from the feed or the user — never hardcoded.
+    """
+
+    class Source(models.TextChoices):
+        NAGER = "nager", "Public holiday feed"
+        MANUAL = "manual", "Manual"
+
+    date = models.DateField(db_index=True)
+    name = models.CharField(max_length=200)
+    local_name = models.CharField(max_length=200, blank=True, default="")
+    country = models.CharField(max_length=2, blank=True, default="")
+    region = models.CharField(max_length=10, blank=True, default="")
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.NAGER)
+
+    class Meta:
+        ordering = ["date", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["owner", "date", "name", "country", "region"],
+                name="unique_holiday_entry",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.date})"

@@ -63,7 +63,9 @@ def create_preview(user, project, order="manual", horizon_days=None):
     horizon_days = min(max(int(horizon_days or DEFAULT_HORIZON_DAYS), 1), MAX_HORIZON_DAYS)
     horizon_end = project.deadline or (now + timedelta(days=horizon_days))
 
-    tasks = list(project.tasks.filter(completed_at__isnull=True)
+    # Recurring tasks manage their own blocks (materialized series) and are
+    # never re-planned by the scheduler.
+    tasks = list(project.tasks.filter(completed_at__isnull=True, recurrence_rule="")
                  .select_related("section").prefetch_related("depends_on"))
     task_ids = {t.id for t in tasks}
 
@@ -84,8 +86,10 @@ def create_preview(user, project, order="manual", horizon_days=None):
     events = (Event.objects.filter(owner=user, all_day=False, start__lt=horizon_end)
               .filter(Q(end__gt=now) | ~Q(recurrence_rule=""))
               .prefetch_related("overrides"))
+    fixed = []
     for occ in expand_events(events, now, horizon_end, settings.tz):
-        busy.append((occ["start"], occ["end"]))
+        fixed.append((occ["start"], occ["end"]))
+    busy = busy + fixed  # fixed commitments are busy time the scheduler never touches
 
     inputs = []
     for t in tasks:
@@ -98,7 +102,7 @@ def create_preview(user, project, order="manual", horizon_days=None):
         ))
 
     result = build_plan(inputs, settings, now, horizon_end, busy=busy,
-                        work_load_by_date=dict(load_by_date), order=order)
+                        work_load_by_date=dict(load_by_date), order=order, fixed=fixed)
     if project.deadline and project.deadline <= now and result["totals"]["requested_minutes"] > 0:
         result["conflicts"].insert(0, {"type": "deadline_passed",
                                        "message": "The project deadline has already passed."})

@@ -192,7 +192,9 @@ class TimeBlockTests(BaseAPITestCase):
 
 class DashboardTests(BaseAPITestCase):
     def test_today_overview(self):
-        now = timezone.now()
+        # Anchor to 09:00 so the +3h block never rolls into tomorrow when the
+        # suite runs late in the UTC day (this test used to be time-flaky).
+        now = timezone.now().replace(hour=9, minute=0, second=0, microsecond=0)
         project = Project.objects.create(
             owner=self.user, title="Learn CUDA", color="#8B5CF6",
             deadline=now + timedelta(days=10),

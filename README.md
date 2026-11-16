@@ -4,7 +4,7 @@ One private app for your time: calendar (events, tasks, prayer times, holidays),
 projects broken into sections and ~1-hour tasks, and an automatic scheduler that distributes
 remaining work across your availability before each project deadline.
 
-**Status: Phase 1 (Foundation) complete; the automatic scheduler (Phase 4 backend + preview UI) and recurrence expansion (Phase 2) are now in.** See `docs/ARCHITECTURE.md` for the
+**Status: feature-complete through Phase 7 — calendar (6 views), projects, automatic scheduler, prayer times, holidays (live feed), search, notification centre, recurring-occurrence editing, offline queue, export/backup, natural-language quick-add.** See `docs/ARCHITECTURE.md` for the
 design and `docs/DEV_PLAN.md` for the phase/task breakdown and progress.
 
 ```
@@ -40,8 +40,9 @@ python manage.py runserver              # http://localhost:8000
 
 - There is no username to remember (single private user, default `owner`); login is by
   password only. The plaintext password is never stored — only the hash you put in `.env`.
-- Run the test suite: `python manage.py test` (82 tests: auth wall, CRUD, validation,
-  progress math, recurrence expansion, scheduler algorithm + API).
+- Run the test suite: `python manage.py test` (128 tests: auth wall, CRUD, validation,
+  progress math, recurrence expansion, scheduler algorithm + API, holidays + feed cache,
+  export JSON/ICS, search, notifications, occurrence overrides).
 - Browsable admin: create a Django superuser with `python manage.py createsuperuser`
   (separate from the app password) and visit `/admin/`.
 
@@ -75,12 +76,13 @@ localStorage, so the app opens offline (data sync offline queueing is a Phase 6 
 
 | Screen | What it does |
 |---|---|
-| **Today** | Everything for the current day: remaining scheduled work, schedule (events + work blocks), prayer times/holidays once configured, overdue tasks (one-tap complete), upcoming deadlines, active project progress |
-| **Calendar** | 7-day strip + day detail with events and work blocks (full day/week/month grids arrive in Phase 2) |
-| **Projects** | Active projects with live progress, plus **Schedule remaining work**: preview a plan (per-day load, conflicts, feasibility), apply it to the calendar, or undo it |
-| **Settings** | Availability + prayer/holiday configuration overview, sign out |
+| **Today** | Everything for the current day: remaining scheduled work, schedule (events + work blocks), prayer times/holidays once configured, overdue tasks (one-tap complete), upcoming deadlines, active project progress, notification bell, natural-language quick-add ("Review PR tomorrow 3-4pm !high #thesis") |
+| **Calendar** | Side-by-side day columns (1/3/5/7-day), 2-week agenda and month grid; today/prev/next; tap to edit; drag entries to any slot or resize them from the bottom handle; press empty time to add an event, timed task or whole-day task; recurring tasks appear as movable blocks with a per-day done toggle; prayer times shown when configured |
+| **Tasks** | All tasks incl. standalone ones; search; Open / Unscheduled / No project / Done filters; tap to edit or complete |
+| **Projects** | Projects with live progress; + to create; tap for the detail screen (sections, tasks, reorder, edit) and **Schedule remaining work**: preview a plan, apply it, or undo it |
+| **Settings** | Edit availability, prayer location/method/adjustments and holiday country; sign out |
 
-Until the UI editors land (Phases 2–3), create data through the API — e.g.:
+You can create everything in the app now; the API is still available directly, e.g.:
 
 ```bash
 TOKEN=...  # from POST /api/auth/login/
@@ -120,14 +122,17 @@ time blocks for a range (max 62 days).
   `TEMPO_SECRET_KEY` in `backend/.env`.
 - Point `TEMPO_DB_ENGINE=postgres` (and credentials) — install `psycopg2-binary`.
 - Serve the PWA from `frontend/dist` behind HTTPS on the same domain or configure CORS.
-- Back up `backend/db.sqlite3` (or the Postgres database) regularly; all data lives there.
+- Back up your data: `python manage.py backup_data backup.json` writes a full dump;
+  `python manage.py restore_data backup.json [--mode replace]` restores it (same shape as
+  the in-app export). Also export JSON/.ics from Settings → Data.
 
 ## Development status
 
-- ☑ **Phase 1 — Foundation** (this delivery): auth, models, API, tests, app shell, PWA
-- ◐ Phase 2 — Calendar: recurrence expansion + range endpoint done; views, editing, drag-and-drop to do
-- ☐ Phase 3 — Project dashboards, sections, task management
-- ◐ Phase 4 — Automatic scheduling: algorithm, API and preview/apply/undo UI done; calendar conflict display to do
-- ☐ Phase 5 — Prayer times & holidays
-- ☐ Phase 6 — Notifications, recurrence UI, search, offline sync, export
-- ☐ Phase 7 — Polish, security review, performance, device testing
+- ☑ Phase 1 — Foundation: auth, models, API, tests, app shell, PWA
+- ☑ Phase 2 — Calendar: day/3-day/5-day time-grids, week & 2-week agendas, month, free date picker, holiday layer, drag-and-drop rescheduling (day grids: drag to a new time with 5-minute snap; month grid: drag between days, time of day kept)
+- ☑ Phase 3 — Projects: detail dashboard, sections, task management, Tasks tab, dependency picker, status filters
+- ☑ Phase 4 — Automatic scheduling: algorithm, preview (per-day load incl. fixed commitments + collision detection), apply/undo
+- ☑ Phase 5 — Prayer times (calculated, offset-adjustable) + holidays from the date.nager.at feed with cache/region support and country picker
+- ☑ Phase 6 — Notification centre, recurring occurrence editing, global search, offline queue, JSON/ICS export, backup/restore, natural-language quick-add
+- ☑ Phase 8 — Side-by-side multi-day grids with cross-day drag + resize handles, recurring tasks (movable occurrences + series edit + per-day done), whole-day tasks, event/task/day-task chooser, JSON & text import (Settings → Data)
+- ◐ Phase 7 — Tests (128 green), security review, performance pass done; real-device (iOS/Android) smoke testing and native push remain device-dependent

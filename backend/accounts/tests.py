@@ -1,4 +1,5 @@
 """Auth, permissions and preferences tests."""
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.test import override_settings
@@ -80,7 +81,8 @@ class PreferencesTests(APITestCase):
         response = self.client.get("/api/auth/me/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["user"]["username"], "owner")
-        self.assertEqual(response.data["profile"]["timezone"], "UTC")
+        # The default timezone follows the environment, not a hardcoded value.
+        self.assertEqual(response.data["profile"]["timezone"], settings.TEMPO_TIMEZONE)
 
     def test_update_working_hours(self):
         response = self.client.patch(

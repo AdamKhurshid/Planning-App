@@ -173,6 +173,28 @@ class BuildPlanTests(SimpleTestCase):
                 for b in bl[i + 1:]:
                     self.assertTrue(a["end"] <= b["start"] or b["end"] <= a["start"])
 
+    def test_fixed_minutes_reported_per_day(self):
+        tasks = [TaskInput(1, "t", 60, (0, 0))]
+        # A 2h fixed commitment on Monday (MON=08:00, window 09:00-17:00).
+        fixed = [(MON + timedelta(hours=2), MON + timedelta(hours=4))]
+        r = self.run_plan(tasks, days=2, busy=fixed, fixed=fixed)
+        by_date = {d["date"]: d for d in r["per_day"]}
+        self.assertEqual(by_date[MON.date()]["fixed_minutes"], 120)
+        self.assertEqual(by_date[(MON + timedelta(days=1)).date()]["fixed_minutes"], 0)
+        # The block must not overlap the fixed commitment.
+        for b in r["blocks"]:
+            self.assertTrue(b["end"] <= fixed[0][0] or b["start"] >= fixed[0][1])
+
+    def test_collides_with_fixed_reported_when_worklands_on_commitment(self):
+        # Sanity net: if a placed block ever overlaps a fixed commitment the
+        # plan reports it instead of silently double-booking. busy=() is a
+        # deliberate fault injection; a 120-min task cannot fit before the
+        # 10:00 commitment, so part of it lands on top of it.
+        tasks = [TaskInput(1, "t", 120, (0, 0))]
+        fixed = [(MON + timedelta(hours=2), MON + timedelta(hours=4))]
+        r = self.run_plan(tasks, days=1, busy=(), fixed=fixed)
+        self.assertTrue(any(c["type"] == "collides_with_fixed" for c in r["conflicts"]))
+
 
 class PlanAPITests(APITestCase):
     def setUp(self):

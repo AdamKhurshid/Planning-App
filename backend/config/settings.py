@@ -65,6 +65,13 @@ TEMPO_PASSWORD_HASH = env("TEMPO_PASSWORD_HASH")
 TEMPO_TIMEZONE = env("TEMPO_TIMEZONE", "UTC")
 TEMPO_CORS_ORIGINS = env("TEMPO_CORS_ORIGINS")
 
+# AI agent (local Ollama). Model default gemma4:e4b — set TEMPO_OLLAMA_MODEL
+# to e.g. gemma4:4b or any tag available in your `ollama list`.
+TEMPO_OLLAMA_HOST = env("TEMPO_OLLAMA_HOST", "http://127.0.0.1:11434")
+TEMPO_OLLAMA_MODEL = env("TEMPO_OLLAMA_MODEL", "gemma4:e4b")
+TEMPO_AGENT_MAX_ROUNDS = int(env("TEMPO_AGENT_MAX_ROUNDS", "5"))
+TEMPO_AGENT_UNDO_DEPTH = int(env("TEMPO_AGENT_UNDO_DEPTH", "5"))
+
 # --- Applications -----------------------------------------------------------
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -79,6 +86,7 @@ INSTALLED_APPS = [
     "planner",
     "projects",
     "scheduling",
+    "agent",
 ]
 
 MIDDLEWARE = [

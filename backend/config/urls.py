@@ -11,4 +11,5 @@ urlpatterns = [
     path("api/", include("planner.urls")),
     path("api/", include("projects.urls")),
     path("api/", include("scheduling.urls")),
+    path("api/agent/", include("agent.urls")),
 ]

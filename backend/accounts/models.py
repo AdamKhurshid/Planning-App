@@ -49,6 +49,10 @@ class Profile(TimeStampedModel):
     holidays_country = models.CharField(max_length=2, blank=True, default="")  # ISO 3166-1 alpha-2
     holidays_region = models.CharField(max_length=10, blank=True, default="")  # ISO 3166-2 subdivision
 
+    # --- reminders / notification centre ---
+    reminder_lead_minutes = models.PositiveIntegerField(default=60)  # warn before an event starts
+    deadline_warning_days = models.PositiveIntegerField(default=7)   # warn ahead of task deadlines
+
     def __str__(self):
         return f"Profile({self.user.username})"
 

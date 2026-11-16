@@ -41,6 +41,26 @@ function RootNavigator() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" />
       <Stack.Screen name="(tabs)" />
+      <Stack.Screen
+        name="project/[id]"
+        options={{
+          headerShown: true,
+          title: "Project",
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.text,
+        }}
+      />
+      <Stack.Screen
+        name="cleanup"
+        options={{
+          headerShown: true,
+          title: "Clean up",
+          headerShadowVisible: false,
+          headerStyle: { backgroundColor: colors.bg },
+          headerTintColor: colors.text,
+        }}
+      />
     </Stack>
   );
 }

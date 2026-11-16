@@ -1,11 +1,19 @@
-/** Today dashboard: "What do I need to do today?" in one screen. */
-import { useCallback, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useFocusEffect } from "expo-router";
+/** Today dashboard: "What do I need to do today?" in one screen.
+ * Also hosts the natural-language quick-add, the in-app notification
+ * centre and the offline sync banner. */
+import { useCallback, useMemo, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
 
-import { endpoints, Dashboard, EventEntry, TaskEntry, TimeBlockEntry } from "@/api/endpoints";
-import { ApiError } from "@/api/client";
+import { endpoints, Dashboard, EventEntry, NotificationItem, TaskEntry, TimeBlockEntry } from "@/api/endpoints";
+import { ApiError, dismissSyncFailure, OfflineError } from "@/api/client";
+import { useOfflineState } from "@/api/hooks";
 import { Card, EmptyState, ProgressBar, SectionTitle, TypeChip } from "@/components/ui";
+import { EventSheet } from "@/components/EventSheet";
+import { TaskSheet } from "@/components/TaskSheet";
+import { Button, Sheet } from "@/components/forms";
+import { parseQuickAdd } from "@/lib/quickadd";
+import { parseLocal } from "@/lib/dates";
 import { fmtMinutes, fmtTime } from "@/lib/format";
 import { colors, spacing } from "@/theme";
 
@@ -21,10 +29,25 @@ function greeting(): string {
   return "Good evening";
 }
 
+const SEVERITY_COLORS: Record<string, string> = { high: colors.danger, medium: colors.event, low: colors.muted };
+
 export default function TodayScreen() {
   const [data, setData] = useState<Dashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const offline = useOfflineState();
+
+  // notification centre
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[] | null>(null);
+
+  // quick add + prefilled editors
+  const [quick, setQuick] = useState("");
+  const [eventSheet, setEventSheet] = useState<{ initial: { title?: string; start?: Date; end?: Date; recurrence_rule?: string } } | null>(null);
+  const [taskSheet, setTaskSheet] = useState<{ initial: { title?: string; estimated_minutes?: number; priority?: "low" | "medium" | "high" | "urgent"; deadline?: Date; project?: number | null } } | null>(null);
+
+  const router = useRouter();
 
   const load = useCallback(async () => {
     try {
@@ -33,6 +56,11 @@ export default function TodayScreen() {
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.detail : "Cannot reach the server.");
     }
+    // The notification count refreshes quietly alongside the dashboard.
+    endpoints
+      .notifications()
+      .then((n) => setNotifications(n.items))
+      .catch(() => undefined);
   }, []);
 
   useFocusEffect(
@@ -46,12 +74,63 @@ export default function TodayScreen() {
     load();
   }
 
-  const schedule: ScheduleItem[] = data
-    ? [
-        ...data.events.map((event) => ({ kind: "event" as const, at: event.start, event })),
-        ...data.time_blocks.map((block) => ({ kind: "block" as const, at: block.start, block })),
-      ].sort((a, b) => a.at.localeCompare(b.at))
-    : [];
+  function runQuickAdd() {
+    const parsed = parseQuickAdd(quick);
+    if (!parsed.title) {
+      setNotice("Write what to add — e.g. “Review PR tomorrow 3-4pm !high #thesis”.");
+      return;
+    }
+    // Match "#tag" against project titles shown on the dashboard.
+    let projectId: number | null = null;
+    if (parsed.projectQuery && data) {
+      const q = parsed.projectQuery.toLowerCase();
+      const match = data.projects.find((p) => p.title.toLowerCase().includes(q));
+      if (match) projectId = match.id;
+    }
+    const base = parsed.date ?? undefined;
+    const start = parsed.isEvent ? parseLocal(base ?? new Date().toISOString().slice(0, 10), parsed.startTime ?? "09:00") : null;
+    if (parsed.isEvent && !start) {
+      setNotice("Could not read that time. Try something like “tomorrow 3-4pm”.");
+      return;
+    }
+    if (parsed.isEvent && start) {
+      let end: Date;
+      if (parsed.endTime) {
+        const e = parseLocal(base ?? start.toISOString().slice(0, 10), parsed.endTime);
+        end = e && e > start ? e : new Date(start.getTime() + 3600000);
+      } else {
+        end = new Date(start.getTime() + (parsed.durationMinutes ?? 60) * 60000);
+      }
+      setEventSheet({ initial: { title: parsed.title, start, end, recurrence_rule: parsed.recurrenceRule } });
+      setQuick("");
+      return;
+    }
+    // Task: parsed date becomes the deadline, duration the estimate.
+    const deadline = base ? (parseLocal(base, "23:59") ?? undefined) : undefined;
+    setTaskSheet({
+      initial: {
+        title: parsed.title,
+        estimated_minutes: parsed.durationMinutes ?? 60,
+        priority: parsed.priority,
+        deadline,
+        project: projectId,
+      },
+    });
+    setQuick("");
+  }
+
+  const schedule: ScheduleItem[] = useMemo(
+    () =>
+      data
+        ? [
+            ...data.events.map((event) => ({ kind: "event" as const, at: event.start, event })),
+            ...data.time_blocks.map((block) => ({ kind: "block" as const, at: block.start, block })),
+          ].sort((a, b) => a.at.localeCompare(b.at))
+        : [],
+    [data],
+  );
+
+  const highSeverity = notifications?.filter((n) => n.severity === "high").length ?? 0;
 
   return (
     <ScrollView
@@ -59,21 +138,65 @@ export default function TodayScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}
     >
-      <Text style={styles.greeting}>{greeting()}</Text>
-      {data ? (
-        <Text style={styles.date}>
-          {new Date(data.date + "T12:00:00").toLocaleDateString([], {
-            weekday: "long",
-            day: "numeric",
-            month: "long",
-          })}
-        </Text>
-      ) : null}
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.greeting}>{greeting()}</Text>
+          {data ? (
+            <Text style={styles.date}>
+              {new Date(data.date + "T12:00:00").toLocaleDateString([], {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+              })}
+            </Text>
+          ) : null}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Notifications${notifications ? `, ${notifications.length} items` : ""}`}
+          onPress={() => setNotifOpen(true)}
+          style={styles.bell}
+        >
+          <Text style={styles.bellIcon}>🔔</Text>
+          {notifications && notifications.length > 0 ? (
+            <View style={[styles.badge, highSeverity > 0 && { backgroundColor: colors.danger }]}>
+              <Text style={styles.badgeText}>{notifications.length}</Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
 
       {error ? <Text style={styles.error}>{error}</Text> : null}
+      {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+
+      {offline.pending.length > 0 || offline.failure ? (
+        <Pressable onPress={() => (offline.failure ? dismissSyncFailure() : undefined)} style={styles.offlineBanner}>
+          <Text style={styles.offlineText}>
+            {offline.failure
+              ? `1 change couldn't sync (${offline.failure.reason}). Tap to dismiss.`
+              : `Offline — ${offline.pending.length} change${offline.pending.length > 1 ? "s" : ""} will sync when you reconnect.`}
+          </Text>
+        </Pressable>
+      ) : null}
 
       {data ? (
         <>
+          {/* Quick add: one line, natural language */}
+          <View style={styles.quickRow}>
+            <TextInput
+              value={quick}
+              onChangeText={setQuick}
+              placeholder='Quick add — "Review PR tomorrow 3-4pm !high #thesis"'
+              placeholderTextColor={colors.muted}
+              style={styles.quickInput}
+              onSubmitEditing={runQuickAdd}
+              returnKeyType="done"
+            />
+            <Pressable accessibilityRole="button" onPress={runQuickAdd} style={styles.quickBtn}>
+              <Text style={styles.quickBtnText}>Add</Text>
+            </Pressable>
+          </View>
+
           {/* Scheduled work remaining today */}
           <Card>
             <Text style={styles.workLabel}>Scheduled work remaining today</Text>
@@ -85,7 +208,7 @@ export default function TodayScreen() {
             </Text>
           </Card>
 
-          {/* Prayer times (Phase 5 feed — rendered when configured) */}
+          {/* Prayer times (rendered when configured) */}
           {data.prayer_times.length > 0 ? (
             <Card>
               <SectionTitle>Prayer times</SectionTitle>
@@ -99,7 +222,7 @@ export default function TodayScreen() {
             </Card>
           ) : null}
 
-          {/* Holidays */}
+          {/* Holidays (from the feed or your manual entries) */}
           {data.holidays.length > 0 ? (
             <Card>
               {data.holidays.map((holiday) => (
@@ -212,15 +335,88 @@ export default function TodayScreen() {
           ) : null}
         </>
       ) : null}
+
+      <EventSheet
+        visible={eventSheet != null}
+        eventId={null}
+        initial={eventSheet?.initial}
+        onClose={(changed) => {
+          setEventSheet(null);
+          if (changed) load();
+        }}
+      />
+      <TaskSheet
+        visible={taskSheet != null}
+        task={null}
+        initial={taskSheet?.initial}
+        onClose={(changed) => {
+          setTaskSheet(null);
+          if (changed) load();
+        }}
+      />
+
+      <Sheet visible={notifOpen} title="Notifications" onClose={() => setNotifOpen(false)}>
+        {notifications == null ? (
+          <Text style={styles.itemMeta}>Loading…</Text>
+        ) : notifications.length === 0 ? (
+          <Text style={styles.itemMeta}>Nothing needs attention. 🎉</Text>
+        ) : (
+          notifications.map((n, i) => (
+            <Pressable
+              key={i}
+              style={styles.notifRow}
+              onPress={() => {
+                setNotifOpen(false);
+                if (n.ref_type === "task") router.push("/(tabs)/tasks");
+                else router.push("/(tabs)/calendar");
+              }}
+            >
+              <View style={[styles.notifDot, { backgroundColor: SEVERITY_COLORS[n.severity] ?? colors.muted }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.itemTitle} numberOfLines={1}>{n.title}</Text>
+                <Text style={styles.itemMeta}>
+                  {n.detail}
+                  {n.when_display ? ` · ${fmtTime(n.when_display)}` : ""}
+                </Text>
+              </View>
+              <TypeChip label={n.kind} tint={SEVERITY_COLORS[n.severity] ?? colors.muted} />
+            </Pressable>
+          ))
+        )}
+      </Sheet>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   content: { padding: spacing.lg, paddingBottom: spacing.xl, gap: spacing.md },
+  headerRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
   greeting: { fontSize: 24, fontWeight: "800", color: colors.text },
   date: { color: colors.muted, marginTop: -spacing.md + 4 },
+  bell: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
+  bellIcon: { fontSize: 18 },
+  badge: { position: "absolute", top: -3, right: -3, backgroundColor: colors.primary, borderRadius: 10, minWidth: 18, alignItems: "center", paddingHorizontal: 4, paddingVertical: 1 },
+  badgeText: { color: "#fff", fontSize: 10, fontWeight: "800" },
   error: { color: colors.danger, textAlign: "center" },
+  notice: { color: colors.muted, textAlign: "center", fontSize: 12 },
+  offlineBanner: { backgroundColor: "#FEF3C7", borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: colors.holiday },
+  offlineText: { color: "#92400E", fontSize: 13, fontWeight: "600" },
+  quickRow: { flexDirection: "row", gap: spacing.sm },
+  quickInput: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: colors.text,
+  },
+  quickBtn: { backgroundColor: colors.primary, borderRadius: 12, paddingHorizontal: 16, alignItems: "center", justifyContent: "center" },
+  quickBtnText: { color: colors.onPrimary, fontWeight: "700" },
+  notifRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: 6 },
+  notifDot: { width: 10, height: 10, borderRadius: 5 },
   workLabel: { color: colors.muted, fontSize: 13 },
   workValue: { fontSize: 22, fontWeight: "800", color: colors.text },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

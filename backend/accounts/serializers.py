@@ -27,6 +27,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "days_off", "latitude", "longitude", "elevation",
             "prayer_method", "asr_madhab", "prayer_offsets",
             "holidays_country", "holidays_region",
+            "reminder_lead_minutes", "deadline_warning_days",
         ]
 
     def validate_working_days(self, value):
@@ -87,4 +88,11 @@ class ProfileSerializer(serializers.ModelSerializer):
         country = attrs.get("holidays_country", getattr(profile, "holidays_country", ""))
         if country and not re.fullmatch(r"[A-Za-z]{2}", country):
             raise serializers.ValidationError({"holidays_country": "Use a 2-letter ISO country code."})
+
+        lead = attrs.get("reminder_lead_minutes", getattr(profile, "reminder_lead_minutes", 60))
+        if not (0 <= int(lead) <= 1440):
+            raise serializers.ValidationError({"reminder_lead_minutes": "Must be between 0 and 1440."})
+        warn = attrs.get("deadline_warning_days", getattr(profile, "deadline_warning_days", 7))
+        if not (1 <= int(warn) <= 90):
+            raise serializers.ValidationError({"deadline_warning_days": "Must be between 1 and 90."})
         return attrs

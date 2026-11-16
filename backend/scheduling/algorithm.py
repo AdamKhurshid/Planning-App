@@ -55,6 +55,7 @@ class Day:
     capacity: int                     # minutes usable today (after the daily cap)
     placed: int = 0
     base_load: int = 0                # minutes of manual work already on this day
+    fixed_minutes: int = 0            # minutes of fixed commitments inside today's window
 
 
 def _round_up(dt, minutes=ROUND_TO):
@@ -87,14 +88,27 @@ def _subtract(window, busy):
     return free
 
 
-def compute_availability(settings, now, horizon_end, busy, work_load_by_date=None):
+def _overlap_minutes(intervals, window):
+    """Total minutes of ``intervals`` (merged) inside ``window`` = (start, end)."""
+    total = 0
+    for s, e in intervals:
+        lo, hi = max(s, window[0]), min(e, window[1])
+        if hi > lo:
+            total += _minutes(lo, hi)
+    return total
+
+
+def compute_availability(settings, now, horizon_end, busy, work_load_by_date=None, fixed=()):
     """Free slots per local day in [now, horizon_end].
 
     ``busy`` — iterable of (start, end) aware datetimes (events, manual blocks).
     ``work_load_by_date`` — {date: minutes} of work already placed manually;
     it counts against that day's cap.
+    ``fixed`` — the subset of ``busy`` that is immovable (fixed events); used
+    only for reporting how committed each day already is.
     """
     tz, merged = settings.tz, _merge(busy)
+    merged_fixed = _merge(list(fixed))
     work_load_by_date = work_load_by_date or {}
     start_day = now.astimezone(tz).date()
     end_day = horizon_end.astimezone(tz).date()
@@ -111,7 +125,15 @@ def compute_availability(settings, now, horizon_end, busy, work_load_by_date=Non
                 free = sum(int((e - s).total_seconds() // 60) for s, e in slots)
                 base = work_load_by_date.get(d, 0)
                 cap = max(0, min(free, settings.max_minutes_per_day - base))
-                days.append(Day(d, slots, cap, base_load=base))
+                day = Day(d, slots, cap, base_load=base)
+                # Report the fixed load across the *whole* working window (not
+                # clipped to "now"), so the preview explains why a day is tight.
+                day.fixed_minutes = _overlap_minutes(
+                    merged_fixed,
+                    (datetime.combine(d, settings.work_start, tzinfo=tz),
+                     datetime.combine(d, settings.work_end, tzinfo=tz)),
+                )
+                days.append(day)
         d += timedelta(days=1)
     return days
 
@@ -177,10 +199,14 @@ def _minutes(a, b):
     return int((b - a).total_seconds() // 60)
 
 
-def build_plan(tasks, settings, now, horizon_end, busy=(), work_load_by_date=None, order="manual"):
+def build_plan(tasks, settings, now, horizon_end, busy=(), work_load_by_date=None, order="manual", fixed=()):
     """Compute a schedule. Returns a plain-dict result (JSON-serialisable
-    once datetimes are ISO-formatted by the caller via ``to_payload``)."""
-    days = compute_availability(settings, now, horizon_end, busy, work_load_by_date)
+    once datetimes are ISO-formatted by the caller via ``to_payload``).
+
+    ``fixed`` — immovable commitments (fixed events). They are part of
+    ``busy``; passing them separately enables the defensive collision scan
+    and the per-day fixed-load report."""
+    days = compute_availability(settings, now, horizon_end, busy, work_load_by_date, fixed)
     ordered, cyclic = order_tasks([t for t in tasks if t.minutes > 0], order)
     remaining = {t.id: t.minutes for t in ordered}
     end_of = {}                       # task id -> latest placed block end
@@ -284,6 +310,20 @@ def build_plan(tasks, settings, now, horizon_end, busy=(), work_load_by_date=Non
         conflicts.append({"type": "unplaced", "task_id": u["task_id"],
                           "message": f"'{u['title']}': {u['minutes']} min could not be scheduled."})
 
+    # Defensive scan: a proposed block must never sit on top of a fixed
+    # commitment. Free slots are built by subtracting busy intervals, so this
+    # should be empty — if it ever is not, show it instead of silently
+    # double-booking.
+    for b in blocks:
+        for s, e in _merge(list(fixed)):
+            if b["start"] < e and b["end"] > s:
+                conflicts.append({
+                    "type": "collides_with_fixed", "task_id": b["task_id"],
+                    "message": (f"'{b['title']}' at {b['start'].astimezone(settings.tz):%Y-%m-%d %H:%M} "
+                                "overlaps a fixed commitment."),
+                })
+                break
+
     feasible = unplaced_minutes == 0
     deficit = None
     if not feasible:
@@ -296,7 +336,7 @@ def build_plan(tasks, settings, now, horizon_end, busy=(), work_load_by_date=Non
         "unplaced": unplaced,
         "conflicts": conflicts,
         "per_day": [{"date": d.date, "capacity_minutes": d.capacity, "planned_minutes": d.placed,
-                     "existing_minutes": d.base_load} for d in days],
+                     "existing_minutes": d.base_load, "fixed_minutes": d.fixed_minutes} for d in days],
         "totals": {"requested_minutes": total, "planned_minutes": total - unplaced_minutes,
                    "unplaced_minutes": unplaced_minutes, "days_available": len(days)},
     }

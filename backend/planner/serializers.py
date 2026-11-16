@@ -1,7 +1,9 @@
 """Serializers for calendar entries."""
+import re
+
 from rest_framework import serializers
 
-from .models import Event, RecurrenceOverride, Task, TimeBlock
+from .models import Event, Holiday, RecurrenceOverride, Task, TimeBlock
 from .recurrence import validate_rrule
 
 
@@ -34,9 +36,14 @@ class EventSerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     is_completed = serializers.BooleanField(read_only=True)
     is_scheduled = serializers.BooleanField(read_only=True)
-    scheduled_minutes = serializers.IntegerField(read_only=True)
+    is_recurring = serializers.SerializerMethodField()
+    scheduled_minutes = serializers.SerializerMethodField()
     project_title = serializers.CharField(source="project.title", read_only=True, default="")
     section_title = serializers.CharField(source="section.title", read_only=True, default="")
+
+    def get_scheduled_minutes(self, obj):
+        dur = getattr(obj, "sched_duration", None)
+        return int(dur.total_seconds() // 60) if dur else 0
 
     class Meta:
         model = Task
@@ -44,10 +51,27 @@ class TaskSerializer(serializers.ModelSerializer):
             "id", "title", "description", "estimated_minutes", "deadline",
             "priority", "completed_at", "is_completed", "color", "category",
             "project", "project_title", "section", "section_title",
-            "position", "recurrence_rule", "depends_on",
+            "position", "recurrence_rule", "preferred_time", "scheduled_date",
+            "depends_on", "is_recurring",
             "is_scheduled", "scheduled_minutes",
             "created_at", "updated_at",
         ]
+
+    def get_is_recurring(self, obj):
+        return bool(obj.recurrence_rule)
+
+    def validate_recurrence_rule(self, value):
+        try:
+            validate_rrule(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+        return value
+
+    def validate_preferred_time(self, value):
+        value = (value or "").strip()
+        if value and not re.fullmatch(r"([01]?\d|2[0-3]):[0-5]\d", value):
+            raise serializers.ValidationError("preferred_time must look like 08:30.")
+        return value
 
     def validate_estimated_minutes(self, value):
         if value <= 0:
@@ -118,3 +142,9 @@ class RecurrenceOverrideSerializer(serializers.ModelSerializer):
         if bool(event) == bool(task):
             raise serializers.ValidationError("Set exactly one of event or task.")
         return attrs
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Holiday
+        fields = ["id", "date", "name", "local_name", "country", "region", "source"]

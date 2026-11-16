@@ -120,7 +120,7 @@ export function SchedulePreview({ projectId, projectTitle, onClose }: Props) {
               ) : null}
 
               <SectionTitle>Plan by day</SectionTitle>
-              {days.filter((d) => d.planned_minutes > 0).map((d) => (
+              {days.filter((d) => d.planned_minutes > 0 || d.fixed_minutes > 0 || d.existing_minutes > 0).map((d) => (
                 <Card key={d.date}>
                   <View style={styles.dayRow}>
                     <Text style={styles.dayTitle}>
@@ -129,6 +129,13 @@ export function SchedulePreview({ projectId, projectTitle, onClose }: Props) {
                     <Text style={styles.muted}>{fmtMinutes(d.planned_minutes)}</Text>
                   </View>
                   <ProgressBar percent={(d.planned_minutes / maxCap) * 100} />
+                  {(d.fixed_minutes > 0 || d.existing_minutes > 0) ? (
+                    <Text style={styles.loadNote}>
+                      {d.fixed_minutes > 0 ? `${fmtMinutes(d.fixed_minutes)} of fixed commitments` : ""}
+                      {d.fixed_minutes > 0 && d.existing_minutes > 0 ? " + " : ""}
+                      {d.existing_minutes > 0 ? `${fmtMinutes(d.existing_minutes)} of work already scheduled` : ""}
+                    </Text>
+                  ) : null}
                   {(byDay.get(d.date) ?? []).map((b, i) => (
                     <Text key={i} style={styles.block}>
                       {fmtTime(b.start)}–{fmtTime(b.end)}  {b.title}
@@ -175,6 +182,7 @@ const styles = StyleSheet.create({
   dayRow: { flexDirection: "row", justifyContent: "space-between" },
   dayTitle: { fontWeight: "700", color: colors.text },
   block: { color: colors.text, fontSize: 13 },
+  loadNote: { color: colors.muted, fontSize: 11, marginTop: 2 },
   error: { color: colors.danger, textAlign: "center" },
   success: { color: colors.success, fontWeight: "700", textAlign: "center" },
   footer: { padding: spacing.lg, gap: spacing.sm, borderTopWidth: 1, borderColor: colors.border, backgroundColor: colors.card },

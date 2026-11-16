@@ -26,56 +26,56 @@ The app itself is managed as a project: phases → sections of ~1-hour tasks. Ea
 - ☑ Calendar/Projects/Settings placeholder screens wired to real endpoints
 - ☑ PWA: manifest, icons, service worker (app-shell cache), static web export verified
 
-## Phase 2 — Calendar ◐
+## Phase 2 — Calendar ☑
 - ☑ Recurrence expansion service (RRULE → occurrences, overrides applied, DST-safe) + tests + RRULE validation on create
 - ☑ Calendar API range endpoint returning merged entry layers (events, blocks) — `GET /api/calendar/`
-- ☐ Time-grid day/3-day/5-day/week/two-week view component (configurable day count)
-- ☐ Month view component with per-day density handling ("+N more")
-- ☐ Date navigation: today button, step forward/back, pick-a-date
-- ☐ Drag-and-drop rescheduling of blocks/events (pointer + touch)
-- ☐ Event/task create & edit sheets (type toggle, times, priority, project link)
-- ☐ Quick-add button from any view; entry detail/edit screen
-- ☐ Visual language per entry type (colors, chips, all-day banners)
-- ☐ Responsive layout pass (mobile ↔ desktop widths)
+- ☑ Day / 3-day / 5-day time-grids (overlap layout, now-line, prayer markers) + week & 2-week agenda
+- ☑ Month view with per-day density ("+N more")
+- ☑ Today button + step forward/back + free pick-a-date sheet (mini month grid)
+- ◐ Drag-and-drop rescheduling (deferred by design) — entries move by editing their time in the sheet
+- ☑ Event/task create & edit sheets (times, priority, project/section link, recurrence presets)
+- ☑ Quick-add (+) on calendar, tasks and projects; tap-to-edit for events and work blocks
+- ☑ Visual language per entry type (colors, all-day banners, prayer markers)
+- ◐ Responsive layout (web verified at desktop + mobile widths; native needs on-device review)
 
-## Phase 3 — Project Management ☐
-- ☐ Project list screen with progress bars and filters
-- ☐ Project summary dashboard (stats, per-section progress, upcoming/overdue/unscheduled)
-- ☐ Project editor (title, description, deadline, priority, color)
-- ☐ Section management: create/rename/reorder/delete
-- ☐ Task management inside sections (~1h chunking guide), reorder, move between sections
-- ☐ Task completion UX + dependency marking
-- ☐ Standalone tasks screen (no project) with unscheduled/completed filters
+## Phase 3 — Project Management ☑
+- ☑ Project list with progress bars, create, open detail, status filter chips (All/Active/Paused/Done/Archived)
+- ☑ Project detail dashboard (progress, pace, per-section progress, overdue/unscheduled counts)
+- ☑ Project editor (title, description, deadline, priority, status, color, delete)
+- ☑ Section management: create/rename/reorder/delete
+- ☑ Task management inside sections: add/edit/delete, reorder (▲▼), move between sections
+- ☑ Task completion UX + dependency marking UI ("depends on" picker in the task sheet, enforced by the scheduler)
+- ☑ Tasks tab: search + Open/Unscheduled/No project/Done filters
 
-## Phase 4 — Scheduling ◐
+## Phase 4 — Scheduling ☑
 - ☑ Availability computation from Profile (windows, caps, days off) + tests
 - ☑ `build_plan` algorithm (order, chunk, spread, place) + unit tests
 - ☑ Feasibility analysis + deficit reporting + tests
 - ☑ Preview screen (proposed blocks, per-day load, conflicts, achievable?)
 - ☑ Apply/undo endpoints with snapshot + history of plans
-- ◐ "Schedule Project" button on the project list (project summary dashboard arrives in Phase 3)
-- ☐ Conflict display when fixed commitments collide
+- ☑ "Schedule remaining work" on the project list and the project detail screen
+- ☑ Conflict display: per-day "fixed commitments" load in the preview + defensive collision scan (never double-books silently)
 
-## Phase 5 — Prayer Times & Holidays ☐
-- ☐ Vendored prayer-time calculation (method + madhab + offsets) + tests vs known reference dates
-- ☐ `/api/prayer-times/` endpoint (date range, location, DST-aware)
-- ☐ Prayer layer on calendar + dashboard; location/method pickers in Settings
-- ☐ Holiday source integration + cache table + region support
-- ☐ Holiday layer (all-day banners) + country/region pickers
+## Phase 5 — Prayer Times & Holidays ☑
+- ☑ Vendored prayer-time calculation (method + madhab + offsets) + tests (`planner/prayer.py`; checked against published NYC sunrise/sunset; compare Fajr/Isha with your local authority)
+- ☑ `/api/prayer-times/` endpoint (date range, location, DST-aware); dashboard `prayer_times` now populated
+- ☑ Prayer layer on dashboard + calendar (day markers, week summary); location/method/offset editors in Settings
+- ☑ Holiday feed (date.nager.at) + `Holiday` cache table + region/subdivision support + manual holidays; feed refresh keeps stale data on network failure
+- ☑ Holiday layer (day banners, agenda rows, month dots) + country picker (live list w/ offline fallback) + region field
 
-## Phase 6 — Advanced ☐
-- ☐ Reminders model + in-app notification center; native push bridge
-- ☐ Recurring editing UI (one occurrence vs series) using overrides
-- ☐ Search screen (global) + filter chips everywhere
-- ☐ Offline: request queue in client.ts + sync-on-reconnect + conflict handling
-- ☐ Export endpoints (entries JSON, projects JSON, ICS for calendar)
-- ☐ Backup/restore management command + DB dump guidance
-- ☐ Natural-language quick-add parser
+## Phase 6 — Advanced ☑
+- ☑ Notification centre (computed: overdue, approaching deadlines, event lead-time reminders, unscheduled nudges) + configurable lead/warning in Settings. Native push = future bridge.
+- ☑ Recurring editing UI: "This event / All events" scope choice; occurrence edits stored as `RecurrenceOverride`, delete-this cancels one occurrence
+- ☑ Global search tab (events/tasks/projects/sections) + project status filter chips + existing tasks filters
+- ☑ Offline queue: mutations persist locally, replay on reconnect/focus, server-rejected entries surfaced (never silent)
+- ☑ Export: `/api/export/?type=json` (full dump) + `?type=ics` (expanded occurrences, work blocks, VTODOs); download buttons in Settings
+- ☑ `manage.py backup_data` / `restore_data` (merge or replace) + README guidance
+- ☑ Natural-language quick-add on Today (dates, time ranges w/ meridiem, duration, priority, #project, repeat rules)
 
-## Phase 7 — Polish & Testing ☐
-- ☐ Full test suite green; scheduling + stats property tests
-- ◐ Security review (permissions, throttles, CORS, headers) — production settings now fail closed on weak secret keys and enable HSTS/secure cookies
-- ☐ Performance pass (query counts, memoization, list virtualization)
-- ☐ PWA install flow tested (desktop + Android)
-- ☐ Real-device smoke test notes (iOS/Android)
-- ☐ Bugfix sweep + final documentation
+## Phase 7 — Polish & Testing ◐
+- ☑ Full test suite green (128 tests: auth, CRUD, validation, progress, recurrence, scheduler, holidays, export, search, notifications, overrides) + scheduler property test
+- ☑ Security review (permissions, throttles, CORS, headers; production fails closed on weak secrets, HSTS/secure cookies)
+- ☑ Performance pass (select_related/prefetch everywhere, `scheduled_minutes` via subquery — no row multiplication)
+- ◐ PWA install flow tested on desktop; Android not tested in this environment
+- ☐ Real-device smoke test notes (iOS/Android) — needs a device
+- ☑ Bugfix sweep + docs updated (README, ARCHITECTURE, this plan); web app exercised end-to-end in a real browser
